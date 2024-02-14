@@ -6,6 +6,7 @@ A Go application that deploys the [Go bookstore api](https://github.com/samiulsa
 ## Running the app
 
 ``go build -o ./app``
+``./app``
 
 ## References
 - https://github.com/kubernetes/client-go/tree/master/examples/create-update-delete-deployment
