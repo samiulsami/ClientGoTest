@@ -7,6 +7,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -61,7 +62,7 @@ func main() {
 								{
 									Name:          "http",
 									Protocol:      apiv1.ProtocolTCP,
-									ContainerPort: 80,
+									ContainerPort: 3000,
 								},
 							},
 						},
@@ -75,13 +76,36 @@ func main() {
 
 	//todo
 	//check this https://stackoverflow.com/questions/53874921/kubernetes-client-go-creating-services-and-enpdoints
-	myService :=
+	myService := &apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gobookstoreapi-service",
+			Namespace: "default",
+		},
+		Spec: apiv1.ServiceSpec{
+			Selector: map[string]string{
+				"app": "gobookstoreapi",
+			},
+			Type: apiv1.ServiceTypeLoadBalancer,
+			Ports: []apiv1.ServicePort{{
+				Name:       "TCP",
+				Port:       3000,
+				TargetPort: intstr.FromInt32(3000),
+				NodePort:   30000,
+			},
+			},
+		},
+	}
 
 	result, err := deploymentsClient.Create(context.TODO(), myDeployment, metav1.CreateOptions{})
 	if err != nil {
 		panic(err)
 	}
+	result2, err2 := serviceClient.Create(context.TODO(), myService, metav1.CreateOptions{})
+	if err != nil {
+		panic(err2)
+	}
 	fmt.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
+	fmt.Printf("Created service %q.\n", result2.GetObjectMeta().GetName())
 }
 
 func int32Ptr(i int32) *int32 { return &i }
