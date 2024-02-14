@@ -4,15 +4,109 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	appsv1 "k8s.io/api/apps/v1"
-	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+	"log"
 	"path/filepath"
 )
+
+var name string = "gobookstoreapi"
+
+func CreateDeployment(client *dynamic.DynamicClient) {
+	deploymentRes := schema.GroupVersionResource{
+		Group:    "apps",
+		Version:  "v1",
+		Resource: "deployments",
+	}
+
+	deploymentObject := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name": name,
+			},
+			"spec": map[string]interface{}{
+				"replicas": 2,
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": name,
+					},
+				},
+				"template": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"labels": map[string]interface{}{
+							"app": name,
+						},
+					},
+					"spec": map[string]interface{}{
+						"containers": []map[string]interface{}{
+							{
+								"name":  name,
+								"image": "sami7786/gobookstoreapi:latest",
+								"ports": []map[string]interface{}{
+									{
+										"name":          "http",
+										"protocol":      "TCP",
+										"containerPort": 3000,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	deployment, err := client.Resource(deploymentRes).Namespace("default").Create(context.TODO(), deploymentObject, metav1.CreateOptions{})
+	if err != nil {
+		log.Fatalf("Failed to create deploymetn: %v\n", err)
+	}
+	fmt.Printf("Created deployment: %s\n", deployment.GetName())
+}
+
+func CreateService(client *dynamic.DynamicClient) {
+	serviceRes := schema.GroupVersionResource{
+		Group:    "",
+		Version:  "v1",
+		Resource: "services",
+	}
+
+	serviceObject := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "Service",
+			"metadata": map[string]interface{}{
+				"name": name + "-service",
+			},
+			"spec": map[string]interface{}{
+				"selector": map[string]interface{}{
+					"app": name,
+				},
+				"type": "LoadBalancer",
+				"ports": []map[string]interface{}{
+					{
+						"protocol":   "TCP",
+						"port":       3000,
+						"targetPort": 3000,
+						"nodePort":   30000,
+					},
+				},
+			},
+		},
+	}
+
+	service, err := client.Resource(serviceRes).Namespace("default").Create(context.TODO(), serviceObject, metav1.CreateOptions{})
+	if err != nil {
+		log.Fatalf("Failed to create service: %v\n", err)
+	}
+	fmt.Printf("Service created: %v\n", service.GetName())
+}
 
 func main() {
 	var kubeconfig *string
@@ -28,84 +122,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := dynamic.NewForConfig(config)
 	if err != nil {
 		panic(err)
 	}
 
-	deploymentsClient := clientset.AppsV1().Deployments(apiv1.NamespaceDefault)
-
-	myDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "gobookstoreapi",
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "gobookstoreapi",
-				},
-			},
-			Replicas: int32Ptr(2),
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": "gobookstoreapi",
-					},
-				},
-				Spec: apiv1.PodSpec{
-					Containers: []apiv1.Container{
-						{
-							Name:            "my-app",
-							Image:           "sami7786/gobookstoreapi:latest",
-							ImagePullPolicy: "IfNotPresent",
-							Ports: []apiv1.ContainerPort{
-								{
-									Name:          "http",
-									Protocol:      apiv1.ProtocolTCP,
-									ContainerPort: 3000,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	serviceClient := clientset.CoreV1().Services(apiv1.NamespaceDefault)
-
-	//todo
-	//check this https://stackoverflow.com/questions/53874921/kubernetes-client-go-creating-services-and-enpdoints
-	myService := &apiv1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "gobookstoreapi-service",
-			Namespace: "default",
-		},
-		Spec: apiv1.ServiceSpec{
-			Selector: map[string]string{
-				"app": "gobookstoreapi",
-			},
-			Type: apiv1.ServiceTypeLoadBalancer,
-			Ports: []apiv1.ServicePort{{
-				Name:       "TCP",
-				Port:       3000,
-				TargetPort: intstr.FromInt32(3000),
-				NodePort:   30000,
-			},
-			},
-		},
-	}
-
-	result, err := deploymentsClient.Create(context.TODO(), myDeployment, metav1.CreateOptions{})
-	if err != nil {
-		panic(err)
-	}
-	result2, err2 := serviceClient.Create(context.TODO(), myService, metav1.CreateOptions{})
-	if err != nil {
-		panic(err2)
-	}
-	fmt.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
-	fmt.Printf("Created service %q.\n", result2.GetObjectMeta().GetName())
+	CreateDeployment(clientset)
+	CreateService(clientset)
 }
-
-func int32Ptr(i int32) *int32 { return &i }
