@@ -37,7 +37,8 @@ func main() {
 
 	myDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "gobookstoreapi",
+			Name:      "gobookstoreapi",
+			Namespace: "default",
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -55,7 +56,7 @@ func main() {
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{
 						{
-							Name:            "my-app",
+							Name:            "gobookstoreapi",
 							Image:           "sami7786/gobookstoreapi:latest",
 							ImagePullPolicy: "IfNotPresent",
 							Ports: []apiv1.ContainerPort{
@@ -85,9 +86,9 @@ func main() {
 			Selector: map[string]string{
 				"app": "gobookstoreapi",
 			},
-			Type: apiv1.ServiceTypeLoadBalancer,
+			Type: apiv1.ServiceTypeNodePort,
 			Ports: []apiv1.ServicePort{{
-				Name:       "TCP",
+				Name:       "tcp",
 				Port:       3000,
 				TargetPort: intstr.FromInt32(3000),
 				NodePort:   30000,
@@ -97,15 +98,19 @@ func main() {
 	}
 
 	result, err := deploymentsClient.Create(context.TODO(), myDeployment, metav1.CreateOptions{})
+	/*if !apierrors.IsAlreadyExists(err) {
+		panic(err)
+	}*/
 	if err != nil {
 		panic(err)
 	}
-	result2, err2 := serviceClient.Create(context.TODO(), myService, metav1.CreateOptions{})
-	if err != nil {
-		panic(err2)
-	}
 	fmt.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
-	fmt.Printf("Created service %q.\n", result2.GetObjectMeta().GetName())
+
+	resultSvc, err := serviceClient.Create(context.TODO(), myService, metav1.CreateOptions{})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Created service %q.\n", resultSvc.GetObjectMeta().GetName())
 }
 
 func int32Ptr(i int32) *int32 { return &i }
